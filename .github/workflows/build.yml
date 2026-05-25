@@ -250,18 +250,50 @@ jobs:
 
       - name: Fetch server entries
         run: |
-          if [ -z "$FETCH_SCRIPT" ]; then
-            echo "⚠ FETCH_SERVER_LIST_SCRIPT not set — building with empty server list (app fetches at runtime)"
-            touch server_entries.txt
+          set -e
+          normalize_server_entries() {
+            if [ ! -s server_entries.txt ]; then
+              return
+            fi
+            FIRST=$(head -1 server_entries.txt)
+            if echo "$FIRST" | grep -qE '^[0-9a-fA-F]{40,}$'; then
+              echo "✓ server entries already hex-encoded"
+              return
+            fi
+            echo "Converting plaintext server entries to hex (Psiphon embedded format)..."
+            python3 scripts/prepare_bootstrap_server_entries.py server_entries.txt server_entries_hex.txt
+            mv server_entries_hex.txt server_entries.txt
+          }
+          # Priority 1: Custom fetch script (Psiphon infra — same as official CI)
+          if [ -n "$FETCH_SCRIPT" ]; then
+            pip3 install cryptography --quiet
+            printenv FETCH_SCRIPT > fetch_server_list.py
+            SERVER_ENTRIES_OUTPUT=server_entries.txt python3 fetch_server_list.py
+            rm fetch_server_list.py
+            normalize_server_entries
+            echo "✓ $(wc -l < server_entries.txt) server entries fetched via script"
             exit 0
           fi
-          pip3 install cryptography --quiet
-          printenv FETCH_SCRIPT > fetch_server_list.py
-          SERVER_ENTRIES_OUTPUT=server_entries.txt python3 fetch_server_list.py
-          rm fetch_server_list.py
-          echo "✓ $(wc -l < server_entries.txt) server entries fetched"
+          # Priority 2: Bootstrap file committed in repo (from original APK, ~1248 entries)
+          if [ -f bootstrap/server_entries_hex.txt.gz ]; then
+            gunzip -c bootstrap/server_entries_hex.txt.gz > server_entries.txt
+            COUNT=$(wc -l < server_entries.txt)
+            echo "✓ $COUNT bootstrap server entries from bootstrap/server_entries_hex.txt.gz"
+            exit 0
+          fi
+          # Priority 3: Optional secret override (must be gzip+base64, max ~48KB — usually too small; use repo file instead)
+          if [ -n "$BOOTSTRAP_ENTRIES" ]; then
+            echo "$BOOTSTRAP_ENTRIES" | base64 -d | gunzip > server_entries.txt
+            normalize_server_entries
+            COUNT=$(wc -l < server_entries.txt)
+            echo "✓ $COUNT bootstrap server entries from PSIPHON_BOOTSTRAP_SERVER_ENTRIES secret"
+            exit 0
+          fi
+          echo "::error::No server entries — add bootstrap/server_entries_hex.txt.gz to the repo (see scripts/prepare_bootstrap_server_entries.py and GITHUB_SECRETS.md)."
+          exit 1
         env:
           FETCH_SCRIPT: ${{ secrets.FETCH_SERVER_LIST_SCRIPT }}
+          BOOTSTRAP_ENTRIES: ${{ secrets.PSIPHON_BOOTSTRAP_SERVER_ENTRIES }}
           PSIPHON_REMOTE_SERVER_LIST_SIGNATURE_PUBLIC_KEY: ${{ secrets.PSIPHON_REMOTE_SERVER_LIST_SIGNATURE_PUBLIC_KEY }}
           PSIPHON_REMOTE_SERVER_LIST_URLS_JSON: ${{ secrets.PSIPHON_REMOTE_SERVER_LIST_URLS_JSON }}
 

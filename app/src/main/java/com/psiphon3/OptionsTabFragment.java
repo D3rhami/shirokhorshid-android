@@ -438,12 +438,39 @@ public class OptionsTabFragment extends PsiphonPreferenceFragmentCompat {
             return true;
         }
 
+        // check if CDN fronting custom-only toggle has changed
+        boolean cdnCustomOnlyNew =
+                prefs.getBoolean(getString(R.string.cdnFrontingCustomOnlyPreference), false);
+        boolean cdnCustomOnlyCurrent =
+                multiProcessPreferences.getBoolean(getString(R.string.cdnFrontingCustomOnlyPreference), false);
+        if (cdnCustomOnlyCurrent != cdnCustomOnlyNew) {
+            return true;
+        }
+
         // check if beast mode setting has changed
         boolean beastModeNew =
                 prefs.getBoolean(getString(R.string.beastModePreference), true);
         boolean beastModeCurrent =
                 multiProcessPreferences.getBoolean(getString(R.string.beastModePreference), true);
         if (beastModeCurrent != beastModeNew) {
+            return true;
+        }
+
+        // check if beast mode worker count has changed
+        String beastModeWorkersNew =
+                prefs.getString(getString(R.string.beastModeWorkersPreference), "");
+        String beastModeWorkersCurrent =
+                multiProcessPreferences.getString(getString(R.string.beastModeWorkersPreference), "");
+        if (!beastModeWorkersCurrent.equals(beastModeWorkersNew)) {
+            return true;
+        }
+
+        // check if debug logging has changed
+        boolean debugModeNew =
+                prefs.getBoolean(getString(R.string.debugModePreference), false);
+        boolean debugModeCurrent =
+                multiProcessPreferences.getBoolean(getString(R.string.debugModePreference), false);
+        if (debugModeCurrent != debugModeNew) {
             return true;
         }
 
@@ -554,7 +581,10 @@ public class OptionsTabFragment extends PsiphonPreferenceFragmentCompat {
                 new SharedPreferencesImport(requireContext(), prefName, getString(R.string.protocolSelectionPreference), getString(R.string.protocolSelectionPreference)),
                 new SharedPreferencesImport(requireContext(), prefName, getString(R.string.cdnFrontingCustomIpListPreference), getString(R.string.cdnFrontingCustomIpListPreference)),
                 new SharedPreferencesImport(requireContext(), prefName, getString(R.string.cdnFrontingCustomSniPreference), getString(R.string.cdnFrontingCustomSniPreference)),
+                new SharedPreferencesImport(requireContext(), prefName, getString(R.string.cdnFrontingCustomOnlyPreference), getString(R.string.cdnFrontingCustomOnlyPreference)),
                 new SharedPreferencesImport(requireContext(), prefName, getString(R.string.beastModePreference), getString(R.string.beastModePreference)),
+                new SharedPreferencesImport(requireContext(), prefName, getString(R.string.beastModeWorkersPreference), getString(R.string.beastModeWorkersPreference)),
+                new SharedPreferencesImport(requireContext(), prefName, getString(R.string.debugModePreference), getString(R.string.debugModePreference)),
                 new SharedPreferencesImport(requireContext(), prefName, getString(R.string.conduitModePreference), getString(R.string.conduitModePreference)),
                 new SharedPreferencesImport(requireContext(), prefName, getString(R.string.conduitTimeoutPreference), getString(R.string.conduitTimeoutPreference)),
                 new SharedPreferencesImport(requireContext(), prefName, getString(R.string.rejectCensoredCountryProxiesPreference), getString(R.string.rejectCensoredCountryProxiesPreference)),

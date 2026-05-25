@@ -45,6 +45,8 @@ import androidx.preference.SwitchPreference;
 import com.psiphon3.MainActivityViewModel;
 import com.psiphon3.R;
 
+import net.grandcentrix.tray.AppPreferences;
+
 import java.util.Locale;
 
 public class MoreOptionsPreferenceActivity extends LocalizedActivities.AppCompatActivity {
@@ -75,9 +77,15 @@ public class MoreOptionsPreferenceActivity extends LocalizedActivities.AppCompat
         EditTextPreference mShareProxyHttpPort;
         EditTextPreference mShareProxyUsername;
         EditTextPreference mShareProxyPassword;
+        private AppPreferences mTrayPreferences;
+        SwitchPreference mDebugModeSwitch;
 
         public void onCreatePreferences(Bundle savedInstanceState, String rootKey) {
             super.onCreatePreferences(savedInstanceState, rootKey);
+            mTrayPreferences = new AppPreferences(requireContext());
+            // Seed the preference screen backing store from Tray so toggles survive
+            // migrate-on-exit (which deletes keys from this SharedPreferences file).
+            syncTrayToBackingStore();
             addPreferencesFromResource(R.xml.more_options_preferences);
             final PreferenceScreen preferences = getPreferenceScreen();
             final PreferenceGetter preferenceGetter = getPreferenceGetter();
@@ -228,11 +236,12 @@ public class MoreOptionsPreferenceActivity extends LocalizedActivities.AppCompat
             }
 
             // Debug mode (verbose per-attempt logging)
-            SwitchPreference debugModeSwitch =
+            mDebugModeSwitch =
                     (SwitchPreference) preferences.findPreference(getString(R.string.debugModePreference));
-            if (debugModeSwitch != null) {
-                debugModeSwitch.setChecked(
-                        preferenceGetter.getBoolean(getString(R.string.debugModePreference), false));
+            if (mDebugModeSwitch != null) {
+                mDebugModeSwitch.setChecked(
+                        getPreferenceScreen().getSharedPreferences().getBoolean(
+                                getString(R.string.debugModePreference), false));
             }
 
             // Set initial protocol-specific category visibility.
@@ -271,6 +280,11 @@ public class MoreOptionsPreferenceActivity extends LocalizedActivities.AppCompat
         @Override
         public void onResume() {
             super.onResume();
+            syncTrayToBackingStore();
+            if (mDebugModeSwitch != null) {
+                mDebugModeSwitch.setChecked(getPreferenceScreen().getSharedPreferences().getBoolean(
+                        getString(R.string.debugModePreference), false));
+            }
             // Set up a listener whenever a key changes
             getPreferenceScreen().getSharedPreferences().registerOnSharedPreferenceChangeListener(this);
         }
@@ -285,6 +299,7 @@ public class MoreOptionsPreferenceActivity extends LocalizedActivities.AppCompat
         @SuppressWarnings("deprecation")
         @Override
         public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, final String key) {
+            copyBackingStoreKeyToTray(sharedPreferences, key);
             trimNetworkSharingPort(sharedPreferences, key, getString(R.string.shareProxyOnNetworkSocksPortPreference));
             trimNetworkSharingPort(sharedPreferences, key, getString(R.string.shareProxyOnNetworkHttpPortPreference));
             trimNetworkSharingUsername(sharedPreferences, key);
@@ -361,6 +376,100 @@ public class MoreOptionsPreferenceActivity extends LocalizedActivities.AppCompat
             } else {
                 preference.setSummary(getString(R.string.beastModeWorkersPreferenceSummary));
             }
+        }
+
+        /**
+         * More Options edits use a temporary SharedPreferences file; the VPN service reads Tray.
+         * After leaving this screen, migrate() copies values into Tray and deletes them here,
+         * which made toggles (e.g. debug mode) appear off on the next visit. Keep both in sync.
+         */
+        private void syncTrayToBackingStore() {
+            if (mTrayPreferences == null) {
+                return;
+            }
+            SharedPreferences backing = getPreferenceManager().getSharedPreferences();
+            SharedPreferences.Editor editor = backing.edit();
+            for (String key : getTrayBooleanKeys()) {
+                editor.putBoolean(key, mTrayPreferences.getBoolean(key, defaultBooleanForKey(key)));
+            }
+            for (String key : getTrayStringKeys()) {
+                editor.putString(key, mTrayPreferences.getString(key, defaultStringForKey(key)));
+            }
+            editor.apply();
+        }
+
+        private void copyBackingStoreKeyToTray(SharedPreferences backing, String key) {
+            if (mTrayPreferences == null || !backing.contains(key)) {
+                return;
+            }
+            for (String boolKey : getTrayBooleanKeys()) {
+                if (boolKey.equals(key)) {
+                    mTrayPreferences.put(key, backing.getBoolean(key, defaultBooleanForKey(key)));
+                    return;
+                }
+            }
+            for (String stringKey : getTrayStringKeys()) {
+                if (stringKey.equals(key)) {
+                    mTrayPreferences.put(key, backing.getString(key, defaultStringForKey(key)));
+                    return;
+                }
+            }
+        }
+
+        private String[] getTrayBooleanKeys() {
+            return new String[] {
+                    getString(R.string.preferenceNotificationsWithSound),
+                    getString(R.string.preferenceNotificationsWithVibrate),
+                    getString(R.string.downloadWifiOnlyPreference),
+                    getString(R.string.disableTimeoutsPreference),
+                    getString(R.string.autoOpenHomepagePreference),
+                    getString(R.string.unsafeTrafficAlertsPreference),
+                    getString(R.string.nfcBumpPreference),
+                    getString(R.string.beastModePreference),
+                    getString(R.string.debugModePreference),
+                    getString(R.string.cdnFrontingCustomOnlyPreference),
+                    getString(R.string.rejectCensoredCountryProxiesPreference),
+                    getString(R.string.shareProxyOnNetworkPreference),
+                    DisguiseManager.PREF_STEALTH_NOTIFICATIONS,
+            };
+        }
+
+        private String[] getTrayStringKeys() {
+            return new String[] {
+                    getString(R.string.protocolSelectionPreference),
+                    getString(R.string.cdnFrontingCustomIpListPreference),
+                    getString(R.string.cdnFrontingCustomSniPreference),
+                    getString(R.string.beastModeWorkersPreference),
+                    getString(R.string.conduitModePreference),
+                    getString(R.string.conduitTimeoutPreference),
+                    getString(R.string.shareProxyOnNetworkSocksPortPreference),
+                    getString(R.string.shareProxyOnNetworkHttpPortPreference),
+                    getString(R.string.shareProxyOnNetworkUsernamePreference),
+                    getString(R.string.shareProxyOnNetworkPasswordPreference),
+            };
+        }
+
+        private boolean defaultBooleanForKey(String key) {
+            if (getString(R.string.beastModePreference).equals(key)
+                    || getString(R.string.autoOpenHomepagePreference).equals(key)
+                    || getString(R.string.nfcBumpPreference).equals(key)
+                    || getString(R.string.rejectCensoredCountryProxiesPreference).equals(key)) {
+                return true;
+            }
+            return false;
+        }
+
+        private String defaultStringForKey(String key) {
+            if (getString(R.string.protocolSelectionPreference).equals(key)) {
+                return "auto";
+            }
+            if (getString(R.string.conduitModePreference).equals(key)) {
+                return "auto";
+            }
+            if (getString(R.string.conduitTimeoutPreference).equals(key)) {
+                return "180";
+            }
+            return "";
         }
 
         private void updateCdnFrontingCustomOnlyState(SwitchPreference preference, String ipListValue) {
