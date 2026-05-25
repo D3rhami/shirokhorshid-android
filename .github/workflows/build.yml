@@ -15,9 +15,6 @@ on:
 permissions:
   contents: write
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
   build-aar:
     name: Build tunnel-core AAR
@@ -29,6 +26,8 @@ jobs:
           repository: shirokhorshid/psiphon-tunnel-core
           ref: ${{ inputs.tunnel_core_ref }}
           path: psiphon-tunnel-core
+          token: ${{ github.token }}
+          fetch-depth: 1
 
       - name: Set up Go
         uses: actions/setup-go@v5
