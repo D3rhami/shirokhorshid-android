@@ -20,12 +20,28 @@ jobs:
     name: Build tunnel-core AAR
     runs-on: ubuntu-latest
     steps:
+      - name: System info
+        run: |
+          echo "=== Runner info ==="
+          uname -a
+          echo "=== Disk space ==="
+          df -h
+          echo "=== Git version ==="
+          git --version
+          echo "=== Network ==="
+          curl -sI https://github.com | head -5 || echo "WARNING: cannot reach github.com"
+
       - name: Checkout tunnel-core
         run: |
+          echo "Cloning shirokhorshid/psiphon-tunnel-core @ ${{ inputs.tunnel_core_ref }} ..."
           git clone --depth 1 \
             --branch "${{ inputs.tunnel_core_ref }}" \
             https://github.com/shirokhorshid/psiphon-tunnel-core.git \
             psiphon-tunnel-core
+          echo "Clone done. HEAD: $(cd psiphon-tunnel-core && git log --oneline -1)"
+          echo "Repo size: $(du -sh psiphon-tunnel-core | cut -f1)"
+          echo "MobileLibrary contents:"
+          ls -la psiphon-tunnel-core/MobileLibrary/
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -33,16 +49,36 @@ jobs:
           go-version: '1.26.3'
           cache: false
 
+      - name: Verify Go
+        run: |
+          echo "=== Go version ==="
+          go version
+          echo "=== GOROOT ==="
+          go env GOROOT
+          echo "=== CGO ==="
+          go env CGO_ENABLED
+
       - name: Install Android NDK 23 and platform 30
         run: |
-          echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "ndk;23.1.7779620" "platforms;android-30"
+          echo "=== Available cmdline-tools ==="
+          ls "$ANDROID_HOME/cmdline-tools/" || echo "No cmdline-tools dir"
+          echo "Installing NDK 23.1.7779620 and android-30 ..."
+          echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager \
+            "ndk;23.1.7779620" "platforms;android-30" 2>&1 | tail -5
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/23.1.7779620" >> $GITHUB_ENV
+          echo "NDK installed at: $ANDROID_HOME/ndk/23.1.7779620"
+          ls "$ANDROID_HOME/ndk/23.1.7779620/" | head -5
 
       - name: Set up JDK 8
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '8'
+
+      - name: Verify Java
+        run: |
+          java -version
+          javac -version
 
       - name: Set up GOPATH workspace
         run: |
@@ -52,24 +88,47 @@ jobs:
           mkdir -p "${{ runner.temp }}/gopath/src/github.com/Psiphon-Labs"
           ln -s "$GITHUB_WORKSPACE/psiphon-tunnel-core" \
             "${{ runner.temp }}/gopath/src/github.com/Psiphon-Labs/psiphon-tunnel-core"
+          echo "Symlink created:"
+          ls -la "${{ runner.temp }}/gopath/src/github.com/Psiphon-Labs/"
 
       - name: Install vendored gomobile
         run: |
+          echo "=== Copying go-mobile to GOPATH ==="
           mkdir -p "$GOPATH/src/golang.org/x"
           cp -r psiphon-tunnel-core/MobileLibrary/go-mobile "$GOPATH/src/golang.org/x/mobile"
-          # Patch gomobile to not fetch gobind from network
-          sed -i 's/golang.org\/x\/mobile\/cmd\/gobind@latest/golang.org\/x\/mobile\/cmd\/gobind/' \
-            "$GOPATH/src/golang.org/x/mobile/cmd/gomobile/init.go"
-          go install golang.org/x/mobile/cmd/gomobile
-          go install golang.org/x/mobile/cmd/gobind
-          gomobile init -v
+          echo "go-mobile contents:"
+          ls "$GOPATH/src/golang.org/x/mobile/"
+
+          echo "=== Patching gomobile init.go to skip network fetch ==="
+          INIT_GO="$GOPATH/src/golang.org/x/mobile/cmd/gomobile/init.go"
+          if [ -f "$INIT_GO" ]; then
+            sed -i 's/golang.org\/x\/mobile\/cmd\/gobind@latest/golang.org\/x\/mobile\/cmd\/gobind/' "$INIT_GO"
+            echo "Patch applied"
+          else
+            echo "WARNING: init.go not found at $INIT_GO"
+            find "$GOPATH/src/golang.org/x/mobile" -name "init.go" | head -5
+          fi
+
+          echo "=== Installing gomobile ==="
+          go install golang.org/x/mobile/cmd/gomobile 2>&1
+          echo "=== Installing gobind ==="
+          go install golang.org/x/mobile/cmd/gobind 2>&1
+          echo "=== gomobile init ==="
+          gomobile init -v 2>&1
+          echo "=== gomobile version ==="
+          gomobile version || true
 
       - name: Build AAR with gomobile bind
         run: |
+          echo "=== Build environment ==="
+          echo "GOPATH=$GOPATH"
+          echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME"
+          echo "Go: $(go version)"
+
           BUILDDATE=$(date --iso-8601=seconds)
           BUILDREPO=$(cd "$GITHUB_WORKSPACE/psiphon-tunnel-core" && git remote get-url origin)
           BUILDREV=$(cd "$GITHUB_WORKSPACE/psiphon-tunnel-core" && git rev-parse --short HEAD)
-          GOFLAGS=""
+          echo "Building repo=$BUILDREPO rev=$BUILDREV date=$BUILDDATE"
 
           LDFLAGS="-checklinkname=0 -s -w"
           LDFLAGS="$LDFLAGS -X github.com/Psiphon-Labs/psiphon-tunnel-core/psiphon/common/buildinfo.buildDate=$BUILDDATE"
@@ -80,58 +139,61 @@ jobs:
           LDFLAGS="$LDFLAGS -extldflags=-Wl,-z,max-page-size=16384,-z,common-page-size=16384"
 
           BUILD_TAGS="PSIPHON_ENABLE_INPROXY"
-
           export CGO_LDFLAGS="-Wl,-z,max-page-size=16384,-z,common-page-size=16384"
           export GOCACHE=/tmp/go-cache
 
+          echo "=== Starting gomobile bind (this takes ~10 min) ==="
           gomobile bind -v \
             -target=android/arm,android/arm64 \
             -tags="$BUILD_TAGS" \
             -ldflags="$LDFLAGS" \
             -o psi.aar \
             github.com/Psiphon-Labs/psiphon-tunnel-core/MobileLibrary/psi
+          echo "=== gomobile bind done ==="
+          ls -lh psi.aar
         working-directory: ${{ runner.temp }}/gopath/src/github.com/Psiphon-Labs/psiphon-tunnel-core/MobileLibrary/Android
 
       - name: Post-process AAR
         run: |
           WORKDIR="${{ runner.temp }}/gopath/src/github.com/Psiphon-Labs/psiphon-tunnel-core/MobileLibrary/Android"
           cd "$WORKDIR"
+          echo "=== Contents before post-process ==="
+          ls -lh
 
-          # Unpack the gomobile-generated AAR
           mkdir -p aar_tmp && cd aar_tmp
           unzip -o ../psi.aar
+          echo "=== AAR contents ==="
+          ls -lh
 
-          # Replace AndroidManifest with PsiphonTunnel's version
           cp ../PsiphonTunnel/AndroidManifest.xml .
-
-          # Add backup rules
           mkdir -p res/xml
           cp ../PsiphonTunnel/ca_psiphon_psiphontunnel_backup_rules.xml res/xml/
 
-          # Compile PsiphonTunnel.java and add to classes.jar
           ANDROID_JAR="$ANDROID_HOME/platforms/android-30/android.jar"
+          echo "=== Compiling PsiphonTunnel.java ==="
           mkdir -p compiled_classes
           javac -source 1.8 -target 1.8 -bootclasspath "$ANDROID_JAR" \
             -classpath classes.jar \
             -d compiled_classes \
             ../PsiphonTunnel/PsiphonTunnel.java
+          echo "Compiled classes:"
+          find compiled_classes -name "*.class" | head -10
 
-          # Merge compiled classes into classes.jar
           if [ -d compiled_classes ] && [ "$(ls -A compiled_classes)" ]; then
             cd compiled_classes
             jar uf ../classes.jar .
             cd ..
           fi
 
-          # Add proguard rules
           echo "-keep class ca.psiphon.** { *; }" >> proguard.txt
           echo "-keep class psi.** { *; }" >> proguard.txt
 
-          # Repackage as ca.psiphon.aar
           rm -f ../ca.psiphon.aar
           zip -r ../ca.psiphon.aar . -x '*.DS_Store'
           cd ..
           rm -rf aar_tmp psi.aar
+          echo "=== Final AAR ==="
+          ls -lh ca.psiphon.aar
 
       - name: Upload AAR artifact
         uses: actions/upload-artifact@v4
@@ -150,8 +212,15 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        env:
-          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+      - name: Verify checkout
+        run: |
+          echo "=== Repo root ==="
+          ls -la
+          echo "=== app/libs ==="
+          ls app/libs/ 2>/dev/null || echo "(empty — AAR not yet downloaded)"
+          echo "=== Gradle wrapper ==="
+          ls gradlew && head -3 gradlew || echo "WARNING: no gradlew"
 
       - name: Download AAR artifact
         uses: actions/download-artifact@v4
@@ -159,28 +228,36 @@ jobs:
           name: ca-psiphon-aar
           path: app/libs/
 
+      - name: Verify AAR
+        run: |
+          echo "=== app/libs after download ==="
+          ls -lh app/libs/
+
       - name: Install system dependencies
         run: |
+          echo "=== Installing libtinfo5 and python3-pip ==="
           sudo apt-get update -qq
           sudo apt-get install -y -qq libtinfo5 python3-pip
+          echo "Done"
 
       - name: Download GeoLite2 database
         run: |
           if [ -z "$MAXMIND_KEY" ]; then
-            echo "⚠ MAXMIND_LICENSE_KEY not set — skipping GeoLite2 download (Conduit country display will be unavailable)"
+            echo "⚠ MAXMIND_LICENSE_KEY not set — skipping GeoLite2 download"
             exit 0
           fi
-          curl -sL "https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-Country&license_key=${MAXMIND_KEY}&suffix=tar.gz" \
+          echo "Downloading GeoLite2-Country.mmdb ..."
+          curl -fL "https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-Country&license_key=${MAXMIND_KEY}&suffix=tar.gz" \
             | tar xz --strip-components=1 --wildcards '*/GeoLite2-Country.mmdb'
           mv GeoLite2-Country.mmdb app/src/main/assets/GeoLite2-Country.mmdb
-          echo "✓ GeoLite2 database downloaded"
+          echo "✓ GeoLite2 downloaded: $(du -sh app/src/main/assets/GeoLite2-Country.mmdb)"
         env:
           MAXMIND_KEY: ${{ secrets.MAXMIND_LICENSE_KEY }}
 
       - name: Fetch server entries
         run: |
           if [ -z "$FETCH_SCRIPT" ]; then
-            echo "⚠ FETCH_SERVER_LIST_SCRIPT not set — building with no embedded servers (app will fetch at runtime)"
+            echo "⚠ FETCH_SERVER_LIST_SCRIPT not set — building with empty server list (app fetches at runtime)"
             touch server_entries.txt
             exit 0
           fi
@@ -196,16 +273,57 @@ jobs:
 
       - name: Set up signing
         run: |
+          echo "=== Decoding keystore ==="
           echo "$KEYSTORE_B64" | base64 -d > release.keystore
+          KEYSTORE_SIZE=$(wc -c < release.keystore)
+          echo "Keystore decoded: ${KEYSTORE_SIZE} bytes"
+          if [ "$KEYSTORE_SIZE" -lt 100 ]; then
+            echo "ERROR: keystore is too small — KEYSTORE_BASE64 secret may be wrong"
+            exit 1
+          fi
           printf 'STORE_FILE=../release.keystore\n' > signing.properties
           printf 'STORE_PASSWORD=%s\n' "$STORE_PASSWORD" >> signing.properties
           printf 'KEY_ALIAS=%s\n' "$KEY_ALIAS" >> signing.properties
           printf 'KEY_PASSWORD=%s\n' "$KEY_PASSWORD" >> signing.properties
+          echo "✓ signing.properties written"
         env:
           KEYSTORE_B64: ${{ secrets.KEYSTORE_BASE64 }}
           STORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+
+      - name: Check required secrets
+        run: |
+          echo "=== Checking required secrets are set ==="
+          MISSING=0
+          check() {
+            if [ -z "$1" ]; then
+              echo "  MISSING: $2"
+              MISSING=$((MISSING+1))
+            else
+              echo "  OK: $2 (${#1} chars)"
+            fi
+          }
+          check "$PROP_ID"  "PSIPHON_PROPAGATION_CHANNEL_ID"
+          check "$SPONSOR"  "PSIPHON_SPONSOR_ID"
+          check "$RSL_KEY"  "PSIPHON_REMOTE_SERVER_LIST_SIGNATURE_PUBLIC_KEY"
+          check "$SE_SIG"   "PSIPHON_SERVER_ENTRY_SIGNATURE_PUBLIC_KEY"
+          check "$SE_OBF"   "PSIPHON_SERVER_ENTRY_EXCHANGE_OBFUSCATION_KEY"
+          check "$RSL_URLS" "PSIPHON_REMOTE_SERVER_LIST_URLS_JSON"
+          check "$OSL_URLS" "PSIPHON_OBFUSCATED_SERVER_LIST_ROOT_URLS_JSON"
+          if [ "$MISSING" -gt 0 ]; then
+            echo "ERROR: $MISSING required secret(s) are missing — add them in repo Settings → Secrets"
+            exit 1
+          fi
+          echo "All required secrets are present"
+        env:
+          PROP_ID:  ${{ secrets.PSIPHON_PROPAGATION_CHANNEL_ID }}
+          SPONSOR:  ${{ secrets.PSIPHON_SPONSOR_ID }}
+          RSL_KEY:  ${{ secrets.PSIPHON_REMOTE_SERVER_LIST_SIGNATURE_PUBLIC_KEY }}
+          SE_SIG:   ${{ secrets.PSIPHON_SERVER_ENTRY_SIGNATURE_PUBLIC_KEY }}
+          SE_OBF:   ${{ secrets.PSIPHON_SERVER_ENTRY_EXCHANGE_OBFUSCATION_KEY }}
+          RSL_URLS: ${{ secrets.PSIPHON_REMOTE_SERVER_LIST_URLS_JSON }}
+          OSL_URLS: ${{ secrets.PSIPHON_OBFUSCATED_SERVER_LIST_ROOT_URLS_JSON }}
 
       - name: Set version info
         id: version
@@ -215,17 +333,28 @@ jobs:
           echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
           echo "calver=$CALVER" >> "$GITHUB_OUTPUT"
           echo "tag=v${CALVER}-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "Version: $CALVER ($SHORT_SHA)"
 
       - name: Build APK
         run: |
+          echo "=== Gradle version ==="
+          ./gradlew --version
+
+          echo "=== Starting Gradle build ==="
           export PSIPHON_EMBEDDED_SERVER_LIST_FILE=server_entries.txt
           export APP_VERSION_NAME=${{ steps.version.outputs.calver }}
           export APP_VERSION_RUN=${{ github.run_number }}
+
           if [ "${{ inputs.clean_build }}" = "true" ]; then
-            ./gradlew clean assembleRelease
+            ./gradlew clean assembleRelease --stacktrace --info 2>&1 | \
+              grep -E "(ERROR|error:|FAILED|warning:|BUILD|Task :|> Task)" || true
+            ./gradlew clean assembleRelease --stacktrace
           else
-            ./gradlew assembleRelease
+            ./gradlew assembleRelease --stacktrace
           fi
+
+          echo "=== APK output ==="
+          find app/build/outputs -name "*.apk" -exec ls -lh {} \;
         env:
           PSIPHON_PROPAGATION_CHANNEL_ID: ${{ secrets.PSIPHON_PROPAGATION_CHANNEL_ID }}
           PSIPHON_SPONSOR_ID: ${{ secrets.PSIPHON_SPONSOR_ID }}
@@ -248,6 +377,7 @@ jobs:
         if: always()
         run: |
           rm -f server_entries.txt signing.properties release.keystore
+          echo "Secrets cleaned up"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
