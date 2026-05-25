@@ -2256,7 +2256,11 @@ public class TunnelManager implements PsiphonTunnel.HostService, VpnManager.VpnS
                 }
 
                 // Debug mode: parse and surface per-attempt diagnostics in the log tab.
-                if (m_debugMode) {
+                // Read preference directly to ensure it's always up-to-date, even if
+                // getPsiphonConfig() hasn't been called yet or the tunnel restarted.
+                boolean debugMode = new AppPreferences(getContext())
+                        .getBoolean(getContext().getString(R.string.debugModePreference), false);
+                if (debugMode) {
                     String debugLine = parseDebugDiagnostic(message);
                     if (debugLine != null) {
                         if (debugLine.startsWith("WARN:")) {
