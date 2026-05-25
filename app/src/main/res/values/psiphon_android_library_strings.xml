@@ -118,6 +118,17 @@
     <string name="beastModePreferenceTitle">Beast Mode</string>
     <string name="beastModePreferenceSummaryOn">Aggressive connection: tries all protocols on every server</string>
     <string name="beastModePreferenceSummaryOff">Normal connection: randomly selects protocols per server</string>
+    <string name="beastModeWorkersPreferenceTitle">Beast Mode workers</string>
+    <string name="beastModeWorkersPreferenceSummary">Number of parallel connection workers (default: 30). Higher = faster scan, more battery use.</string>
+    <string name="beastModeWorkersPreferenceSummaryConfigured">%1$d parallel workers</string>
+    <string name="debugModePreferenceTitle">Debug logging</string>
+    <string name="debugModePreferenceSummaryOn">Verbose: showing every connection attempt, failure and timeout in the log</string>
+    <string name="debugModePreferenceSummaryOff">Normal logging</string>
+    <string name="debug_dial_attempt">[DBG] Trying %1$s → %2$s</string>
+    <string name="debug_dial_failed">[DBG] ✗ %1$s failed: %2$s</string>
+    <string name="debug_dial_timeout">[DBG] ⏱ Timeout: %s</string>
+    <string name="debug_notice_alert">[DBG] ⚠ %s</string>
+    <string name="debug_notice_info">[DBG] %s</string>
     <string name="rejectCensoredCountryProxiesPreferenceTitle">Reject proxies in censored countries</string>
     <string name="rejectCensoredCountryProxiesPreferenceSummary">Block Conduit stations located in Iran, China, Russia, and other censored countries</string>
     <string name="conduit_proxy_trying">Trying Conduit relay (country: %s)</string>

@@ -158,6 +158,8 @@ public class TunnelManager implements PsiphonTunnel.HostService, VpnManager.VpnS
         String cdnFrontingCustomSni = "";
         boolean cdnFrontingCustomOnly = false;
         boolean beastMode = true; // aggressive establishment: try all protocols on all servers
+        int beastModeWorkers = 0;  // 0 = use Go library default (~30)
+        boolean debugMode = false; // verbose per-attempt logging in the log tab
         String conduitMode = "auto"; // "auto", "shirokhorshid", or "public"
         int conduitTimeoutSeconds = 180; // fallback timeout for auto conduit mode
         boolean rejectCensoredCountryProxies = true; // block conduits in censored countries
@@ -220,6 +222,7 @@ public class TunnelManager implements PsiphonTunnel.HostService, VpnManager.VpnS
     private VpnManager m_vpnManager = VpnManager.getInstance();
     private String m_lastUpstreamProxyErrorMessage;
     private volatile String m_lastInproxyDiagMsg = "";
+    private volatile boolean m_debugMode = false;
     private Handler m_Handler = new Handler();
 
     private PendingIntent m_notificationPendingIntent;
@@ -588,6 +591,16 @@ public class TunnelManager implements PsiphonTunnel.HostService, VpnManager.VpnS
             tunnelConfig.beastMode = multiProcessPreferences
                     .getBoolean(getContext().getString(R.string.beastModePreference),
                             true);
+            try {
+                String workersStr = multiProcessPreferences
+                        .getString(getContext().getString(R.string.beastModeWorkersPreference), "0");
+                int workers = Integer.parseInt(workersStr.trim());
+                tunnelConfig.beastModeWorkers = (workers > 0) ? workers : 0;
+            } catch (NumberFormatException e) {
+                tunnelConfig.beastModeWorkers = 0;
+            }
+            tunnelConfig.debugMode = multiProcessPreferences
+                    .getBoolean(getContext().getString(R.string.debugModePreference), false);
             tunnelConfig.conduitMode = multiProcessPreferences
                     .getString(getContext().getString(R.string.conduitModePreference),
                             "auto");
@@ -1987,7 +2000,12 @@ public class TunnelManager implements PsiphonTunnel.HostService, VpnManager.VpnS
             // Beast mode: aggressive establishment, try all protocols on all servers
             if (tunnelConfig.beastMode) {
                 json.put("AggressiveEstablishment", true);
-                MyLog.i("BeastMode", "enabled", true);
+                if (tunnelConfig.beastModeWorkers > 0) {
+                    json.put("EstablishmentWorkerPoolSize", tunnelConfig.beastModeWorkers);
+                    MyLog.i("BeastMode", "enabled", true, "workers", tunnelConfig.beastModeWorkers);
+                } else {
+                    MyLog.i("BeastMode", "enabled", true);
+                }
             }
 
             json.put("EmitServerAlerts", true);
@@ -2096,6 +2114,8 @@ public class TunnelManager implements PsiphonTunnel.HostService, VpnManager.VpnS
         setPlatformAffixes(m_tunnel, null);
         // Sync instance fallback state into config for the static buildTunnelCoreConfig
         m_tunnelConfig.conduitFallbackToPublic = m_conduitFallbackToPublic;
+        // Sync debug mode so the diagnostic handler can see the current preference
+        m_debugMode = m_tunnelConfig.debugMode;
         String config = buildTunnelCoreConfig(getContext(), m_tunnelConfig, true, null);
         return config == null ? "" : config;
     }
@@ -2234,7 +2254,40 @@ public class TunnelManager implements PsiphonTunnel.HostService, VpnManager.VpnS
                     // Don't log the raw diagnostic JSON for inproxy-dial
                     return;
                 }
-                
+
+                // Debug mode: parse and surface per-attempt diagnostics in the log tab.
+                if (m_debugMode) {
+                    String debugLine = parseDebugDiagnostic(message);
+                    if (debugLine != null) {
+                        if (debugLine.startsWith("WARN:")) {
+                            MyLog.w(R.string.debug_notice_alert, MyLog.Sensitivity.NOT_SENSITIVE,
+                                    debugLine.substring(5).trim());
+                        } else if (debugLine.startsWith("FAIL:")) {
+                            MyLog.w(R.string.debug_dial_failed, MyLog.Sensitivity.NOT_SENSITIVE,
+                                    "", debugLine.substring(5).trim());
+                        } else if (debugLine.startsWith("TIMEOUT:")) {
+                            MyLog.w(R.string.debug_dial_timeout, MyLog.Sensitivity.NOT_SENSITIVE,
+                                    debugLine.substring(8).trim());
+                        } else if (debugLine.startsWith("DIAL:")) {
+                            // "DIAL:PROTOCOL → address"
+                            String rest = debugLine.substring(5).trim();
+                            int arrow = rest.indexOf("→");
+                            if (arrow > 0) {
+                                MyLog.i(R.string.debug_dial_attempt, MyLog.Sensitivity.NOT_SENSITIVE,
+                                        rest.substring(0, arrow).trim(),
+                                        rest.substring(arrow + 1).trim());
+                            } else {
+                                MyLog.i(R.string.debug_notice_info, MyLog.Sensitivity.NOT_SENSITIVE, rest);
+                            }
+                        } else {
+                            MyLog.i(R.string.debug_notice_info, MyLog.Sensitivity.NOT_SENSITIVE, debugLine);
+                        }
+                        // Still store as diagnostic for feedback, then return
+                        MyLog.i(now, message);
+                        return;
+                    }
+                }
+
                 MyLog.i(now, message);
             }
         });
@@ -2369,6 +2422,132 @@ public class TunnelManager implements PsiphonTunnel.HostService, VpnManager.VpnS
             }
             return null;
         }
+    }
+
+    /**
+     * Parse a raw Psiphon tunnel-core diagnostic notice string into a short, human-readable
+     * line for display in the debug log.  Returns null when the message is not interesting
+     * enough to surface (e.g. byte-counter ticks, empty data, etc.).
+     *
+     * The Go core emits two broad formats:
+     *   1. Plain-text synthetic notices  – "beast mode active (workers: 60)"
+     *      (These are already handled above and never reach this method.)
+     *   2. JSON-wrapped notices          – "Alert: {\"message\":\"...\", ...}"
+     *                                    – "Info: {\"message\":\"...\", ...}"
+     *
+     * Return value prefixes used by the caller to choose log priority:
+     *   "DIAL:<protocol> → <addr>"  – dialing a server
+     *   "FAIL:<reason>"             – connection attempt failed
+     *   "TIMEOUT:<context>"         – deadline exceeded
+     *   "WARN:<text>"               – alert / warning
+     *   "<text>"                    – general informational
+     */
+    private static String parseDebugDiagnostic(String raw) {
+        if (raw == null || raw.isEmpty()) return null;
+
+        // --- Try to parse the JSON-wrapper format: "NoticeType: {json}" ---
+        String noticeType = null;
+        org.json.JSONObject data = null;
+        int colonBrace = raw.indexOf(": {");
+        if (colonBrace > 0) {
+            noticeType = raw.substring(0, colonBrace).trim();
+            try {
+                data = new org.json.JSONObject(raw.substring(colonBrace + 2));
+            } catch (org.json.JSONException ignored) {
+                // fall through to plain-text handling
+            }
+        }
+
+        if (data != null) {
+            String msg     = data.optString("message", "").trim();
+            String error   = data.optString("error",   "").trim();
+            String protocol= data.optString("protocol","").trim();
+            String address = data.optString("address", "").trim();
+            if (address.isEmpty()) address = data.optString("serverIPAddress", "").trim();
+            String duration= formatDuration(data.optString("duration", null));
+
+            // --- Alert notices (always surfaced in debug mode) ---
+            if ("Alert".equalsIgnoreCase(noticeType) || "Warning".equalsIgnoreCase(noticeType)) {
+                String text = msg.isEmpty() ? error : msg;
+                if (text.isEmpty()) text = raw;
+                // Trim overly verbose stack-trace noise
+                int nl = text.indexOf('\n');
+                if (nl > 0) text = text.substring(0, nl);
+                if (text.length() > 160) text = text.substring(0, 160) + "…";
+                return "WARN:" + text;
+            }
+
+            // --- Timeout / deadline exceeded ---
+            String lmsg = msg.toLowerCase(Locale.US);
+            String lerr  = error.toLowerCase(Locale.US);
+            if (lmsg.contains("timeout") || lerr.contains("timeout")
+                    || lerr.contains("deadline exceeded") || lmsg.contains("deadline exceeded")) {
+                String ctx = msg.isEmpty() ? error : msg;
+                if (!protocol.isEmpty()) ctx = protocol + " – " + ctx;
+                if (duration != null) ctx += " (" + duration + ")";
+                if (ctx.length() > 160) ctx = ctx.substring(0, 160) + "…";
+                return "TIMEOUT:" + ctx;
+            }
+
+            // --- Failed / error connections ---
+            if (!error.isEmpty()
+                    || lmsg.contains("failed") || lmsg.contains("error")
+                    || lmsg.contains("refused") || lmsg.contains("reset")
+                    || lmsg.contains("unreachable")) {
+                String reason = error.isEmpty() ? msg : error;
+                if (!protocol.isEmpty()) reason = protocol + " – " + reason;
+                if (duration != null) reason += " (" + duration + ")";
+                if (reason.length() > 160) reason = reason.substring(0, 160) + "…";
+                return "FAIL:" + reason;
+            }
+
+            // --- Dial / connect attempts ---
+            if (lmsg.contains("dial") || lmsg.contains("connect")
+                    || lmsg.contains("handshake") || lmsg.contains("negotiat")) {
+                String proto = protocol.isEmpty() ? noticeType : protocol;
+                String addr  = address.isEmpty() ? "" : address;
+                String label = msg.isEmpty() ? proto : msg;
+                if (duration != null) label += " (" + duration + ")";
+                if (label.length() > 120) label = label.substring(0, 120) + "…";
+                if (!addr.isEmpty()) {
+                    return "DIAL:" + label + " → " + addr;
+                }
+                return label;
+            }
+
+            // --- Protocol / server selection info ---
+            if (!protocol.isEmpty() || lmsg.contains("protocol")
+                    || lmsg.contains("server") || lmsg.contains("selecting")) {
+                StringBuilder sb = new StringBuilder();
+                if (!protocol.isEmpty()) sb.append("[").append(protocol).append("] ");
+                sb.append(msg.isEmpty() ? noticeType : msg);
+                if (!address.isEmpty()) sb.append(" ").append(address);
+                if (duration != null) sb.append(" (").append(duration).append(")");
+                String result = sb.toString();
+                if (result.length() > 160) result = result.substring(0, 160) + "…";
+                return result;
+            }
+
+            // Ignore low-signal notices (bytes transferred, heartbeat, etc.)
+            return null;
+        }
+
+        // --- Plain-text fallback (not JSON-wrapped) ---
+        // Only surface if it contains connection-relevant keywords
+        String lower = raw.toLowerCase(Locale.US);
+        if (lower.contains("timeout") || lower.contains("deadline exceeded")) {
+            String text = raw.length() > 160 ? raw.substring(0, 160) + "…" : raw;
+            return "TIMEOUT:" + text;
+        }
+        if (lower.contains("failed") || lower.contains("error") || lower.contains("refused")) {
+            String text = raw.length() > 160 ? raw.substring(0, 160) + "…" : raw;
+            return "FAIL:" + text;
+        }
+        if (lower.contains("dial") || lower.contains("connect") || lower.contains("handshake")) {
+            String text = raw.length() > 160 ? raw.substring(0, 160) + "…" : raw;
+            return text;
+        }
+        return null;
     }
 
     @Override

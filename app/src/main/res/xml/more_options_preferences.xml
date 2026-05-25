@@ -74,6 +74,19 @@
             android:summaryOn="@string/beastModePreferenceSummaryOn"
             android:summaryOff="@string/beastModePreferenceSummaryOff"
             android:defaultValue="true" />
+        <EditTextPreference
+            android:icon="@drawable/ic_beast_mode"
+            android:key="@string/beastModeWorkersPreference"
+            android:inputType="number"
+            android:title="@string/beastModeWorkersPreferenceTitle"
+            android:summary="@string/beastModeWorkersPreferenceSummary" />
+        <SwitchPreference
+            android:icon="@drawable/baseline_info_white_24"
+            android:key="@string/debugModePreference"
+            android:title="@string/debugModePreferenceTitle"
+            android:summaryOn="@string/debugModePreferenceSummaryOn"
+            android:summaryOff="@string/debugModePreferenceSummaryOff"
+            android:defaultValue="false" />
     </PreferenceCategory>
     <PreferenceCategory
         android:key="cdnFrontingCategory"

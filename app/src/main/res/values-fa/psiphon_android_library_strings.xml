@@ -219,6 +219,17 @@
   <string name="beastModePreferenceTitle">حالت قدرتمند</string>
   <string name="beastModePreferenceSummaryOn">اتصال تهاجمی: همه پروتکل‌ها را روی هر سرور امتحان می‌کند</string>
   <string name="beastModePreferenceSummaryOff">اتصال عادی: پروتکل‌ها را به‌صورت تصادفی برای هر سرور انتخاب می‌کند</string>
+  <string name="beastModeWorkersPreferenceTitle">تعداد کارگرهای حالت قدرتمند</string>
+  <string name="beastModeWorkersPreferenceSummary">تعداد اتصال‌های موازی (پیش‌فرض: ۳۰). بیشتر = اسکن سریع‌تر، مصرف باتری بیشتر.</string>
+  <string name="beastModeWorkersPreferenceSummaryConfigured">%1$d کارگر موازی</string>
+  <string name="debugModePreferenceTitle">لاگ اشکال‌زدایی</string>
+  <string name="debugModePreferenceSummaryOn">جزئیات کامل: هر تلاش اتصال، خطا و تایم‌اوت در لاگ نمایش داده می‌شود</string>
+  <string name="debugModePreferenceSummaryOff">لاگ معمولی</string>
+  <string name="debug_dial_attempt">[DBG] تلاش %1$s ← %2$s</string>
+  <string name="debug_dial_failed">[DBG] ✗ %1$s ناموفق: %2$s</string>
+  <string name="debug_dial_timeout">[DBG] ⏱ تایم‌اوت: %s</string>
+  <string name="debug_notice_alert">[DBG] ⚠ %s</string>
+  <string name="debug_notice_info">[DBG] %s</string>
   <string name="cdn_fronting_scan_active">اسکن CDN فعال است - حالت %1$s، %2$s کارگر</string>
   <string name="cdn_fronting_scan_progress">اسکن CDN: %1$s تلاش، فعال: %2$s</string>
   <string name="cdn_fronting_scan_exhausted">اسکن CDN پس از %1$s تلاش تمام شد، فعال: %2$s</string>

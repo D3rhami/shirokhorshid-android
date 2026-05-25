@@ -209,6 +209,32 @@ public class MoreOptionsPreferenceActivity extends LocalizedActivities.AppCompat
                         preferenceGetter.getBoolean(getString(R.string.beastModePreference), true));
             }
 
+            // Beast mode worker count
+            EditTextPreference beastModeWorkersPref =
+                    (EditTextPreference) preferences.findPreference(getString(R.string.beastModeWorkersPreference));
+            if (beastModeWorkersPref != null) {
+                String workersStr = preferenceGetter.getString(
+                        getString(R.string.beastModeWorkersPreference), "");
+                beastModeWorkersPref.setText(workersStr);
+                beastModeWorkersPref.setOnBindEditTextListener(editText -> {
+                    editText.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+                    editText.selectAll();
+                });
+                updateBeastModeWorkersSummary(beastModeWorkersPref, workersStr);
+                beastModeWorkersPref.setOnPreferenceChangeListener((preference, newValue) -> {
+                    updateBeastModeWorkersSummary((EditTextPreference) preference, (String) newValue);
+                    return true;
+                });
+            }
+
+            // Debug mode (verbose per-attempt logging)
+            SwitchPreference debugModeSwitch =
+                    (SwitchPreference) preferences.findPreference(getString(R.string.debugModePreference));
+            if (debugModeSwitch != null) {
+                debugModeSwitch.setChecked(
+                        preferenceGetter.getBoolean(getString(R.string.debugModePreference), false));
+            }
+
             // Set initial protocol-specific category visibility.
             PreferenceCategory cdnFrontingCategory =
                     (PreferenceCategory) preferences.findPreference("cdnFrontingCategory");
@@ -323,6 +349,18 @@ public class MoreOptionsPreferenceActivity extends LocalizedActivities.AppCompat
             return "auto".equals(protocol) ||
                     "direct".equals(protocol) ||
                     "cdn_fronting".equals(protocol);
+        }
+
+        private void updateBeastModeWorkersSummary(EditTextPreference preference, String value) {
+            int workers = 0;
+            if (!TextUtils.isEmpty(value)) {
+                try { workers = Integer.parseInt(value.trim()); } catch (NumberFormatException ignored) {}
+            }
+            if (workers > 0) {
+                preference.setSummary(getString(R.string.beastModeWorkersPreferenceSummaryConfigured, workers));
+            } else {
+                preference.setSummary(getString(R.string.beastModeWorkersPreferenceSummary));
+            }
         }
 
         private void updateCdnFrontingCustomOnlyState(SwitchPreference preference, String ipListValue) {
