@@ -21,11 +21,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout tunnel-core
-        uses: actions/checkout@v4
-        with:
-          repository: shirokhorshid/psiphon-tunnel-core
-          ref: ${{ inputs.tunnel_core_ref }}
-          path: psiphon-tunnel-core
+        run: |
+          git clone --depth 1 \
+            --branch "${{ inputs.tunnel_core_ref }}" \
+            https://github.com/shirokhorshid/psiphon-tunnel-core.git \
+            psiphon-tunnel-core
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -150,6 +150,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
       - name: Download AAR artifact
         uses: actions/download-artifact@v4
