@@ -72,23 +72,27 @@ task generateEmbeddedValues {
         def dataCollectionUrl = embedded('PSIPHON_DATA_COLLECTION_INFO_URL', 'https://psiphon.ca/privacy.html')
         def conduitCompartmentId = embedded('PSIPHON_CONDUIT_COMPARTMENT_ID', '')
 
-        // Build the server list array initializer
-        // Supports a file with one entry per line, or a single entry from env var
+        // Escape double quotes in JSON strings for embedding in Java string literals
+        def escapeJava = { String s -> s.replace('"', '\\"') }
+
+        // Server list: large lists go to assets (avoids javac class size limits);
+        // single-entry env var can still be inlined in EMBEDDED_SERVER_LIST.
         def serverListFilePath = embedded('PSIPHON_EMBEDDED_SERVER_LIST_FILE', '')
         def serverListEntries = ''
+        def serverListAssetsDir = file("${buildDir}/generated/server_list_assets")
         if (serverListFilePath) {
             def listFile = new File(serverListFilePath)
             if (listFile.exists()) {
                 def entries = listFile.readLines().findAll { it.trim() }
-                serverListEntries = entries.collect { "\"${escapeJava(it)}\"" }.join(', ')
-                logger.lifecycle("Read ${entries.size()} server entries from file")
+                if (entries.size() > 0) {
+                    serverListAssetsDir.mkdirs()
+                    file("${serverListAssetsDir}/embedded_server_entries.txt").text = entries.join('\n') + '\n'
+                    logger.lifecycle("Packaged ${entries.size()} server entries as asset embedded_server_entries.txt")
+                }
             }
         } else if (serverList) {
-            serverListEntries = "\"${serverList}\""
+            serverListEntries = "\"${escapeJava(serverList)}\""
         }
-
-        // Escape double quotes in JSON strings for embedding in Java string literals
-        def escapeJava = { String s -> s.replace('"', '\\"') }
 
         embeddedValuesFile.text = """\
 /*
@@ -250,6 +254,12 @@ android {
         } else {
             verName = '0.0.0'
             verCode = 1
+        }
+    }
+
+    sourceSets {
+        main {
+            assets.srcDirs += ["${buildDir}/generated/server_list_assets"]
         }
     }
 

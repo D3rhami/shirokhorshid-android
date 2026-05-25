@@ -1044,13 +1044,35 @@ public class TunnelManager implements PsiphonTunnel.HostService, VpnManager.VpnS
 
     private final static String LEGACY_SERVER_ENTRY_FILENAME = "psiphon_server_entries.json";
     private final static String GEOIP_DATABASE_FILENAME = "GeoLite2-Country.mmdb";
+    private final static String EMBEDDED_SERVER_ENTRIES_ASSET = "embedded_server_entries.txt";
 
     static String getServerEntries(Context context) {
         StringBuilder list = new StringBuilder();
 
-        for (String encodedServerEntry : EmbeddedValues.EMBEDDED_SERVER_LIST) {
-            list.append(encodedServerEntry);
-            list.append("\n");
+        boolean loadedFromAssets = false;
+        try {
+            java.io.InputStream in = context.getAssets().open(EMBEDDED_SERVER_ENTRIES_ASSET);
+            java.io.BufferedReader reader = new java.io.BufferedReader(
+                    new java.io.InputStreamReader(in, java.nio.charset.StandardCharsets.UTF_8));
+            String line;
+            while ((line = reader.readLine()) != null) {
+                line = line.trim();
+                if (!line.isEmpty()) {
+                    list.append(line);
+                    list.append("\n");
+                    loadedFromAssets = true;
+                }
+            }
+            reader.close();
+        } catch (java.io.IOException ignored) {
+            // Fall back to compile-time embedded list (small builds / dev)
+        }
+
+        if (!loadedFromAssets) {
+            for (String encodedServerEntry : EmbeddedValues.EMBEDDED_SERVER_LIST) {
+                list.append(encodedServerEntry);
+                list.append("\n");
+            }
         }
 
         // Delete legacy server entries if they exist
