@@ -465,15 +465,6 @@ public class OptionsTabFragment extends PsiphonPreferenceFragmentCompat {
             return true;
         }
 
-        // check if debug logging has changed
-        boolean debugModeNew =
-                prefs.getBoolean(getString(R.string.debugModePreference), false);
-        boolean debugModeCurrent =
-                multiProcessPreferences.getBoolean(getString(R.string.debugModePreference), false);
-        if (debugModeCurrent != debugModeNew) {
-            return true;
-        }
-
         // check if conduit settings have changed
         String conduitModeNew =
                 prefs.getString(getString(R.string.conduitModePreference), "auto");
