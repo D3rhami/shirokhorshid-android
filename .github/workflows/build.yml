@@ -415,12 +415,15 @@ jobs:
 
       - name: Create release
         run: |
+          set -e
+          TAG="${{ steps.version.outputs.tag }}"
           APK="ShirOKhorshid-${{ steps.version.outputs.calver }}.apk"
-          gh release create "${{ steps.version.outputs.tag }}" \
-            "$APK" \
-            --repo "${{ github.repository }}" \
-            --title "ShirOKhorshid ${{ steps.version.outputs.calver }}" \
-            --notes-file checksums.txt \
-            --latest
+          echo "Creating release for tag: $TAG"
+          echo "APK file: $APK"
+          ls -lh "$APK"
+          # Delete any existing release/tag with the same name so re-runs don't fail
+          gh release delete "$TAG" --repo "${{ github.repository }}" --yes 2>/dev/null || true
+          git push --delete origin "$TAG" 2>/dev/null || true
+          gh release create "$TAG" "$APK" --repo "${{ github.repository }}" --title "ShirOKhorshid ${{ steps.version.outputs.calver }}" --notes-file checksums.txt --latest
         env:
           GH_TOKEN: ${{ github.token }}
