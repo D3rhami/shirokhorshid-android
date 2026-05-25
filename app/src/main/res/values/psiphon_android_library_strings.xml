@@ -111,6 +111,10 @@
     <string name="cdnFrontingCustomSniPreferenceSummaryConfigured">Using SNI: %1$s</string>
     <string name="cdnFrontingCustomSniPreferenceSummaryConfiguredMultiple">Using %1$d SNI hostnames</string>
     <string name="cdnFrontingCustomSniPreferenceSummaryInvalid">No valid hostnames; SNI list will be ignored</string>
+    <string name="cdnFrontingCustomOnlyPreferenceTitle">Use my IPs only</string>
+    <string name="cdnFrontingCustomOnlyPreferenceSummaryOn">Skipping the built-in CDN list — only your custom IPs are used</string>
+    <string name="cdnFrontingCustomOnlyPreferenceSummaryOff">Using built-in CDN list plus your custom IPs</string>
+    <string name="cdnFrontingCustomOnlyPreferenceSummaryDisabled">Add custom CDN IPs above to enable this option</string>
     <string name="beastModePreferenceTitle">Beast Mode</string>
     <string name="beastModePreferenceSummaryOn">Aggressive connection: tries all protocols on every server</string>
     <string name="beastModePreferenceSummaryOff">Normal connection: randomly selects protocols per server</string>

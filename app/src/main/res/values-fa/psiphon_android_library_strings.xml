@@ -210,6 +210,10 @@
   <string name="cdnFrontingCustomSniPreferenceSummaryConfigured">SNI در حال استفاده: %1$s</string>
   <string name="cdnFrontingCustomSniPreferenceSummaryConfiguredMultiple">استفاده از %1$d نام میزبان SNI</string>
   <string name="cdnFrontingCustomSniPreferenceSummaryInvalid">هیچ نام میزبان معتبری پیدا نشد؛ فهرست SNI نادیده گرفته می‌شود</string>
+  <string name="cdnFrontingCustomOnlyPreferenceTitle">فقط از ای‌پی‌های من استفاده کن</string>
+  <string name="cdnFrontingCustomOnlyPreferenceSummaryOn">فهرست داخلی CDN نادیده گرفته می‌شود — فقط ای‌پی‌های سفارشی شما استفاده می‌شوند</string>
+  <string name="cdnFrontingCustomOnlyPreferenceSummaryOff">فهرست داخلی CDN به همراه ای‌پی‌های سفارشی شما استفاده می‌شود</string>
+  <string name="cdnFrontingCustomOnlyPreferenceSummaryDisabled">برای فعال کردن این گزینه، ابتدا ای‌پی‌های CDN سفارشی وارد کنید</string>
   <string name="autoOpenHomepagePreferenceTitle">باز کردن وب‌سایت پس از اتصال</string>
   <string name="autoOpenHomepagePreferenceSummary">پس از اتصال تونل، وب‌سایت اتصال به‌صورت خودکار باز شود</string>
   <string name="beastModePreferenceTitle">حالت قدرتمند</string>

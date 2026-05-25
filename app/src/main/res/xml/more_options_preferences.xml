@@ -94,6 +94,13 @@
             android:inputType="textMultiLine|textNoSuggestions"
             android:summary="@string/cdnFrontingCustomSniPreferenceSummary"
             android:title="@string/cdnFrontingCustomSniPreferenceTitle" />
+        <SwitchPreference
+            android:icon="@drawable/ic_cdn_edge"
+            android:key="@string/cdnFrontingCustomOnlyPreference"
+            android:title="@string/cdnFrontingCustomOnlyPreferenceTitle"
+            android:summaryOn="@string/cdnFrontingCustomOnlyPreferenceSummaryOn"
+            android:summaryOff="@string/cdnFrontingCustomOnlyPreferenceSummaryOff"
+            android:defaultValue="false" />
     </PreferenceCategory>
     <PreferenceCategory
         android:key="conduitCategory"

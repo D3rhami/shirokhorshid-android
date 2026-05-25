@@ -70,6 +70,7 @@ public class MoreOptionsPreferenceActivity extends LocalizedActivities.AppCompat
         ListPreference mLanguageSelector;
         EditTextPreference mCdnFrontingCustomIpList;
         EditTextPreference mCdnFrontingCustomSni;
+        SwitchPreference mCdnFrontingCustomOnly;
         EditTextPreference mShareProxySocksPort;
         EditTextPreference mShareProxyHttpPort;
         EditTextPreference mShareProxyUsername;
@@ -155,11 +156,6 @@ public class MoreOptionsPreferenceActivity extends LocalizedActivities.AppCompat
                     editText.setSelection(editText.length());
                 });
                 updateCdnFrontingCustomIpSummary(mCdnFrontingCustomIpList, customIpList);
-                mCdnFrontingCustomIpList.setOnPreferenceChangeListener((preference, newValue) -> {
-                    updateCdnFrontingCustomIpSummary(
-                            (EditTextPreference) preference, (String) newValue);
-                    return true;
-                });
             }
 
             mCdnFrontingCustomSni = (EditTextPreference) preferences
@@ -182,6 +178,27 @@ public class MoreOptionsPreferenceActivity extends LocalizedActivities.AppCompat
                             (EditTextPreference) preference, (String) newValue);
                     return true;
                 });
+            }
+
+            mCdnFrontingCustomOnly = (SwitchPreference) preferences
+                    .findPreference(getString(R.string.cdnFrontingCustomOnlyPreference));
+            if (mCdnFrontingCustomOnly != null) {
+                boolean customOnly = preferenceGetter.getBoolean(
+                        getString(R.string.cdnFrontingCustomOnlyPreference), false);
+                mCdnFrontingCustomOnly.setChecked(customOnly);
+                String currentIpList = preferenceGetter.getString(
+                        getString(R.string.cdnFrontingCustomIpListPreference), "");
+                updateCdnFrontingCustomOnlyState(mCdnFrontingCustomOnly, currentIpList);
+
+                // Keep toggle state in sync when the custom IP list changes
+                if (mCdnFrontingCustomIpList != null) {
+                    mCdnFrontingCustomIpList.setOnPreferenceChangeListener((preference, newValue) -> {
+                        updateCdnFrontingCustomIpSummary(
+                                (EditTextPreference) preference, (String) newValue);
+                        updateCdnFrontingCustomOnlyState(mCdnFrontingCustomOnly, (String) newValue);
+                        return true;
+                    });
+                }
             }
 
             // Beast mode (aggressive establishment)
@@ -306,6 +323,18 @@ public class MoreOptionsPreferenceActivity extends LocalizedActivities.AppCompat
             return "auto".equals(protocol) ||
                     "direct".equals(protocol) ||
                     "cdn_fronting".equals(protocol);
+        }
+
+        private void updateCdnFrontingCustomOnlyState(SwitchPreference preference, String ipListValue) {
+            boolean hasIps = countCdnFrontingIpEntries(ipListValue) > 0;
+            preference.setEnabled(hasIps);
+            if (!hasIps) {
+                preference.setChecked(false);
+                preference.setSummary(getString(R.string.cdnFrontingCustomOnlyPreferenceSummaryDisabled));
+            } else {
+                // Let the XML summaryOn/summaryOff take over
+                preference.setSummary(null);
+            }
         }
 
         private void updateCdnFrontingCustomIpSummary(EditTextPreference preference, String value) {

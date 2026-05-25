@@ -156,6 +156,7 @@ public class TunnelManager implements PsiphonTunnel.HostService, VpnManager.VpnS
         String protocolSelection = "auto"; // "auto", "conduit", "cdn_fronting", or "direct"
         String cdnFrontingCustomIpList = "";
         String cdnFrontingCustomSni = "";
+        boolean cdnFrontingCustomOnly = false;
         boolean beastMode = true; // aggressive establishment: try all protocols on all servers
         String conduitMode = "auto"; // "auto", "shirokhorshid", or "public"
         int conduitTimeoutSeconds = 180; // fallback timeout for auto conduit mode
@@ -581,6 +582,9 @@ public class TunnelManager implements PsiphonTunnel.HostService, VpnManager.VpnS
             tunnelConfig.cdnFrontingCustomSni = multiProcessPreferences
                     .getString(getContext().getString(R.string.cdnFrontingCustomSniPreference),
                             "");
+            tunnelConfig.cdnFrontingCustomOnly = multiProcessPreferences
+                    .getBoolean(getContext().getString(R.string.cdnFrontingCustomOnlyPreference),
+                            false);
             tunnelConfig.beastMode = multiProcessPreferences
                     .getBoolean(getContext().getString(R.string.beastModePreference),
                             true);
@@ -1775,7 +1779,13 @@ public class TunnelManager implements PsiphonTunnel.HostService, VpnManager.VpnS
         json.put("FrontedMeekDialOverrides", makeCdnFrontingDialOverrides(
                 tunnelConfig.cdnFrontingCustomSni));
         json.put("FrontedMeekDialOverridesProbability", 1.0);
-        json.put("FrontedMeekCDNScanUseBuiltInSpec", true);
+
+        // When the user has supplied custom IPs and opted to use them exclusively,
+        // skip the built-in Psiphon CDN list entirely so the scan only probes their IPs.
+        boolean hasCustomIps = !parseCdnFrontingCustomIpCandidates(
+                tunnelConfig.cdnFrontingCustomIpList).isEmpty();
+        boolean useBuiltIn = !(tunnelConfig.cdnFrontingCustomOnly && hasCustomIps);
+        json.put("FrontedMeekCDNScanUseBuiltInSpec", useBuiltIn);
 
         JSONObject scanSpec = makeCdnFrontingScanSpec(
                 tunnelConfig.cdnFrontingCustomIpList,
