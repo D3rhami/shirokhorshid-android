@@ -32,16 +32,16 @@ jobs:
           curl -sI https://github.com | head -5 || echo "WARNING: cannot reach github.com"
 
       - name: Checkout tunnel-core
+        env:
+          TC_REF: ${{ inputs.tunnel_core_ref }}
         run: |
-          echo "Cloning shirokhorshid/psiphon-tunnel-core @ ${{ inputs.tunnel_core_ref }} ..."
-          git clone --depth 1 \
-            --branch "${{ inputs.tunnel_core_ref }}" \
-            https://github.com/shirokhorshid/psiphon-tunnel-core.git \
-            psiphon-tunnel-core
-          echo "Clone done. HEAD: $(cd psiphon-tunnel-core && git log --oneline -1)"
-          echo "Repo size: $(du -sh psiphon-tunnel-core | cut -f1)"
-          echo "MobileLibrary contents:"
-          ls -la psiphon-tunnel-core/MobileLibrary/
+          set -x
+          TC_REF="${TC_REF:-shirokhorshid}"
+          echo "Cloning branch: $TC_REF"
+          git clone --depth 1 --branch "$TC_REF" "https://github.com/shirokhorshid/psiphon-tunnel-core.git" psiphon-tunnel-core
+          echo "HEAD: $(cd psiphon-tunnel-core && git log --oneline -1)"
+          echo "Size: $(du -sh psiphon-tunnel-core | cut -f1)"
+          ls psiphon-tunnel-core/MobileLibrary/
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -67,7 +67,7 @@ jobs:
             "ndk;23.1.7779620" "platforms;android-30" 2>&1 | tail -5
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/23.1.7779620" >> $GITHUB_ENV
           echo "NDK installed at: $ANDROID_HOME/ndk/23.1.7779620"
-          ls "$ANDROID_HOME/ndk/23.1.7779620/" | head -5
+          ls "$ANDROID_HOME/ndk/23.1.7779620/" 2>/dev/null | head -5 || echo "(ndk dir not found)"
 
       - name: Set up JDK 8
         uses: actions/setup-java@v4
@@ -86,8 +86,7 @@ jobs:
           echo "GO111MODULE=off" >> $GITHUB_ENV
           echo "${{ runner.temp }}/gopath/bin" >> $GITHUB_PATH
           mkdir -p "${{ runner.temp }}/gopath/src/github.com/Psiphon-Labs"
-          ln -s "$GITHUB_WORKSPACE/psiphon-tunnel-core" \
-            "${{ runner.temp }}/gopath/src/github.com/Psiphon-Labs/psiphon-tunnel-core"
+          ln -s "$GITHUB_WORKSPACE/psiphon-tunnel-core" "${{ runner.temp }}/gopath/src/github.com/Psiphon-Labs/psiphon-tunnel-core"
           echo "Symlink created:"
           ls -la "${{ runner.temp }}/gopath/src/github.com/Psiphon-Labs/"
 
@@ -102,7 +101,7 @@ jobs:
           echo "=== Patching gomobile init.go to skip network fetch ==="
           INIT_GO="$GOPATH/src/golang.org/x/mobile/cmd/gomobile/init.go"
           if [ -f "$INIT_GO" ]; then
-            sed -i 's/golang.org\/x\/mobile\/cmd\/gobind@latest/golang.org\/x\/mobile\/cmd\/gobind/' "$INIT_GO"
+            sed -i 's|golang.org/x/mobile/cmd/gobind@latest|golang.org/x/mobile/cmd/gobind|g' "$INIT_GO"
             echo "Patch applied"
           else
             echo "WARNING: init.go not found at $INIT_GO"
@@ -143,12 +142,7 @@ jobs:
           export GOCACHE=/tmp/go-cache
 
           echo "=== Starting gomobile bind (this takes ~10 min) ==="
-          gomobile bind -v \
-            -target=android/arm,android/arm64 \
-            -tags="$BUILD_TAGS" \
-            -ldflags="$LDFLAGS" \
-            -o psi.aar \
-            github.com/Psiphon-Labs/psiphon-tunnel-core/MobileLibrary/psi
+          gomobile bind -v -target=android/arm,android/arm64 -tags="$BUILD_TAGS" -ldflags="$LDFLAGS" -o psi.aar github.com/Psiphon-Labs/psiphon-tunnel-core/MobileLibrary/psi
           echo "=== gomobile bind done ==="
           ls -lh psi.aar
         working-directory: ${{ runner.temp }}/gopath/src/github.com/Psiphon-Labs/psiphon-tunnel-core/MobileLibrary/Android
@@ -346,8 +340,6 @@ jobs:
           export APP_VERSION_RUN=${{ github.run_number }}
 
           if [ "${{ inputs.clean_build }}" = "true" ]; then
-            ./gradlew clean assembleRelease --stacktrace --info 2>&1 | \
-              grep -E "(ERROR|error:|FAILED|warning:|BUILD|Task :|> Task)" || true
             ./gradlew clean assembleRelease --stacktrace
           else
             ./gradlew assembleRelease --stacktrace

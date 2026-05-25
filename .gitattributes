@@ -1,0 +1,4 @@
+# Force LF line endings for all text files (prevents CRLF breaking bash scripts in CI)
+* text=auto eol=lf
+*.yml linguist-language=YAML
+*.sh eol=lf
